@@ -2,9 +2,10 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base
+from pydantic import BaseModel
 import pandas as pd
 
-# Database URL (PostgreSQL on Render)
+# Database URL
 DATABASE_URL = "postgresql://car_user:FFiCalDwRyZwiJKt5hjpsOvAaiL6sBoL@dpg-d1de9eer433s73f6bt50-a.oregon-postgres.render.com/car_api_l6s0"
 
 # SQLAlchemy setup
@@ -24,12 +25,12 @@ class Car(Base):
 # Create table if not exists
 Base.metadata.create_all(bind=engine)
 
-# Load data from CSV once
+# Load data from Excel into DB if empty
 def load_data_once():
     db = SessionLocal()
     count = db.query(Car).first()
     if not count:
-        df = pd.read_excel("cars.xlsx")  # Make sure your file is now .xlsx and uploaded
+        df = pd.read_excel("cars.xlsx")
         for _, row in df.iterrows():
             car = Car(
                 year=int(row['year']),
@@ -44,7 +45,7 @@ def load_data_once():
 # FastAPI app
 app = FastAPI()
 
-# CORS (to allow frontend requests)
+# CORS (allow frontend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -52,7 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load CSV data into DB (one time on startup)
+# Load once
 load_data_once()
 
 @app.get("/")
@@ -93,4 +94,21 @@ def get_car(year: int, make: str, model: str):
             "category": car.category
         }
     return {"error": "Car not found"}
+
+# Address schema
+class Location(BaseModel):
+    formatted_address: str
+    city: str
+    state: str
+    zip: str
+    lat: float
+    lng: float
+
+@app.post("/pickup")
+def pickup_address(location: Location):
+    return {"message": "Pickup received", "location": location}
+
+@app.post("/dropoff")
+def dropoff_address(location: Location):
+    return {"message": "Dropoff received", "location": location}
 
