@@ -1,33 +1,35 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 import pandas as pd
 
-# PostgreSQL connection URL
+# Database URL (PostgreSQL on Render)
 DATABASE_URL = "postgresql://car_user:FFiCalDwRyZwiJKt5hjpsOvAaiL6sBoL@dpg-d1de9eer433s73f6bt50-a.oregon-postgres.render.com/car_api_l6s0"
 
+# SQLAlchemy setup
 engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# Define the Car model
+# Car model
 class Car(Base):
     __tablename__ = "cars"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, index=True)
     year = Column(Integer)
     make = Column(String)
     model = Column(String)
     category = Column(String)
 
+# Create table if not exists
 Base.metadata.create_all(bind=engine)
 
-# Load CSV data only if table is empty
+# Load data from CSV once
 def load_data_once():
-    session = SessionLocal()
-    if session.query(Car).count() == 0:
-        print("📥 Loading data from CSV...")
-        df = pd.read_csv("cars.csv")  # CSV should have: year,make,model,category
+    db = SessionLocal()
+    count = db.query(Car).first()
+    if not count:
+        df = pd.read_excel("cars.xlsx")  # Make sure your file is now .xlsx and uploaded
         for _, row in df.iterrows():
             car = Car(
                 year=int(row['year']),
@@ -35,21 +37,60 @@ def load_data_once():
                 model=str(row['model']),
                 category=str(row['category'])
             )
-            session.add(car)
-        session.commit()
-        print("✅ Loaded car data into DB.")
-    else:
-        print("✅ Car data already exists.")
-    session.close()
-
-load_data_once()
+            db.add(car)
+        db.commit()
+    db.close()
 
 # FastAPI app
 app = FastAPI()
 
-@app.get("/cars")
-def get_cars():
-    session = SessionLocal()
-    cars = session.query(Car).limit(100).all()
-    session.close()
-    return [{"make": c.make, "model": c.model, "year": c.year, "category": c.category} for c in cars]
+# CORS (to allow frontend requests)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load CSV data into DB (one time on startup)
+load_data_once()
+
+@app.get("/")
+def root():
+    return {"message": "Car API is live"}
+
+@app.get("/years")
+def get_years():
+    db = SessionLocal()
+    years = db.query(Car.year).distinct().order_by(Car.year).all()
+    db.close()
+    return [y[0] for y in years]
+
+@app.get("/makes")
+def get_makes(year: int = Query(...)):
+    db = SessionLocal()
+    makes = db.query(Car.make).filter(Car.year == year).distinct().order_by(Car.make).all()
+    db.close()
+    return [m[0] for m in makes]
+
+@app.get("/models")
+def get_models(year: int = Query(...), make: str = Query(...)):
+    db = SessionLocal()
+    models = db.query(Car.model).filter(Car.year == year, Car.make == make).distinct().order_by(Car.model).all()
+    db.close()
+    return [m[0] for m in models]
+
+@app.get("/car")
+def get_car(year: int, make: str, model: str):
+    db = SessionLocal()
+    car = db.query(Car).filter(Car.year == year, Car.make == make, Car.model == model).first()
+    db.close()
+    if car:
+        return {
+            "year": car.year,
+            "make": car.make,
+            "model": car.model,
+            "category": car.category
+        }
+    return {"error": "Car not found"}
+
