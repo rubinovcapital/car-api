@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic import BaseModel
 import pandas as pd
 
-# Database URL
+# Database URL from Render
 DATABASE_URL = "postgresql://car_user:FFiCalDwRyZwiJKt5hjpsOvAaiL6sBoL@dpg-d1de9eer433s73f6bt50-a.oregon-postgres.render.com/car_api_l6s0"
 
 # SQLAlchemy setup
@@ -13,7 +13,7 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# Car model
+# Car model table
 class Car(Base):
     __tablename__ = "cars"
     id = Column(Integer, primary_key=True, index=True)
@@ -22,7 +22,7 @@ class Car(Base):
     model = Column(String)
     category = Column(String)
 
-# Quote model
+# Quote submissions table
 class Quote(Base):
     __tablename__ = "quotes"
     id = Column(Integer, primary_key=True, index=True)
@@ -40,7 +40,7 @@ class Quote(Base):
 # Create all tables
 Base.metadata.create_all(bind=engine)
 
-# Load car data from Excel into DB (only once)
+# Load car data if not already loaded
 def load_data_once():
     db = SessionLocal()
     count = db.query(Car).first()
@@ -57,25 +57,27 @@ def load_data_once():
         db.commit()
     db.close()
 
-# FastAPI app
+# Initialize FastAPI app
 app = FastAPI()
 
-# CORS (frontend access)
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load initial car data
+# Load car data at startup
 load_data_once()
 
-# Routes
+# Root endpoint
 @app.get("/")
 def root():
     return {"message": "Car API is live"}
 
+# Get years
 @app.get("/years")
 def get_years():
     db = SessionLocal()
@@ -83,6 +85,7 @@ def get_years():
     db.close()
     return [y[0] for y in years]
 
+# Get makes for year
 @app.get("/makes")
 def get_makes(year: int = Query(...)):
     db = SessionLocal()
@@ -90,6 +93,7 @@ def get_makes(year: int = Query(...)):
     db.close()
     return [m[0] for m in makes]
 
+# Get models for year + make
 @app.get("/models")
 def get_models(year: int = Query(...), make: str = Query(...)):
     db = SessionLocal()
@@ -97,6 +101,7 @@ def get_models(year: int = Query(...), make: str = Query(...)):
     db.close()
     return [m[0] for m in models]
 
+# Optional: get a specific car with category
 @app.get("/car")
 def get_car(year: int, make: str, model: str):
     db = SessionLocal()
@@ -111,7 +116,7 @@ def get_car(year: int, make: str, model: str):
         }
     return {"error": "Car not found"}
 
-# Location schema
+# Google Address Schema (optional)
 class Location(BaseModel):
     formatted_address: str
     city: str
@@ -128,7 +133,7 @@ def pickup_address(location: Location):
 def dropoff_address(location: Location):
     return {"message": "Dropoff received", "location": location}
 
-# Quote submission schema
+# Quote form schema
 class QuoteSubmission(BaseModel):
     email: str
     phone: str
@@ -141,6 +146,7 @@ class QuoteSubmission(BaseModel):
     operable: str
     date: str
 
+# Save submitted quotes
 @app.post("/submit-quote")
 def submit_quote(quote: QuoteSubmission):
     db = SessionLocal()
@@ -150,4 +156,3 @@ def submit_quote(quote: QuoteSubmission):
     db.refresh(submission)
     db.close()
     return {"message": "Quote submitted", "id": submission.id}
-
