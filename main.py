@@ -22,10 +22,25 @@ class Car(Base):
     model = Column(String)
     category = Column(String)
 
-# Create table if not exists
+# Quote model
+class Quote(Base):
+    __tablename__ = "quotes"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String)
+    phone = Column(String)
+    pickup = Column(String)
+    dropoff = Column(String)
+    transport_type = Column(String)
+    year = Column(String)
+    make = Column(String)
+    model = Column(String)
+    operable = Column(String)
+    date = Column(String)
+
+# Create all tables
 Base.metadata.create_all(bind=engine)
 
-# Load data from Excel into DB if empty
+# Load car data from Excel into DB (only once)
 def load_data_once():
     db = SessionLocal()
     count = db.query(Car).first()
@@ -45,7 +60,7 @@ def load_data_once():
 # FastAPI app
 app = FastAPI()
 
-# CORS (allow frontend)
+# CORS (frontend access)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,9 +68,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load once
+# Load initial car data
 load_data_once()
 
+# Routes
 @app.get("/")
 def root():
     return {"message": "Car API is live"}
@@ -95,7 +111,7 @@ def get_car(year: int, make: str, model: str):
         }
     return {"error": "Car not found"}
 
-# Address schema
+# Location schema
 class Location(BaseModel):
     formatted_address: str
     city: str
@@ -111,4 +127,27 @@ def pickup_address(location: Location):
 @app.post("/dropoff")
 def dropoff_address(location: Location):
     return {"message": "Dropoff received", "location": location}
+
+# Quote submission schema
+class QuoteSubmission(BaseModel):
+    email: str
+    phone: str
+    pickup: str
+    dropoff: str
+    transport_type: str
+    year: str
+    make: str
+    model: str
+    operable: str
+    date: str
+
+@app.post("/submit-quote")
+def submit_quote(quote: QuoteSubmission):
+    db = SessionLocal()
+    submission = Quote(**quote.dict())
+    db.add(submission)
+    db.commit()
+    db.refresh(submission)
+    db.close()
+    return {"message": "Quote submitted", "id": submission.id}
 
