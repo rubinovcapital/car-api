@@ -5,15 +5,13 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from pydantic import BaseModel
 import pandas as pd
 
-# Database URL
+# Database
 DATABASE_URL = "postgresql://car_user:FFiCalDwRyZwiJKt5hjpsOvAaiL6sBoL@dpg-d1de9eer433s73f6bt50-a.oregon-postgres.render.com/car_api_l6s0"
-
-# SQLAlchemy setup
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# Cars Table
+# Tables
 class Car(Base):
     __tablename__ = "cars"
     id = Column(Integer, primary_key=True, index=True)
@@ -22,12 +20,9 @@ class Car(Base):
     model = Column(String)
     category = Column(String)
 
-# Quotes Table
 class Quote(Base):
     __tablename__ = "quotes"
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String)
-    phone = Column(String)
     pickup = Column(String)
     dropoff = Column(String)
     transport_type = Column(String)
@@ -35,32 +30,29 @@ class Quote(Base):
     make = Column(String)
     model = Column(String)
     operable = Column(String)
-    shipping_date = Column(String)  # This must match the frontend field name
+    email = Column(String)
+    phone = Column(String)
+    shipping_date = Column(String)
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
-# Load car data if not already loaded
+# Load car data from Excel (only once)
 def load_data_once():
     db = SessionLocal()
-    count = db.query(Car).first()
-    if not count:
+    if not db.query(Car).first():
         df = pd.read_excel("cars.xlsx")
         for _, row in df.iterrows():
-            car = Car(
+            db.add(Car(
                 year=int(row['year']),
                 make=str(row['make']),
                 model=str(row['model']),
                 category=str(row['category'])
-            )
-            db.add(car)
+            ))
         db.commit()
     db.close()
 
-# FastAPI app
 app = FastAPI()
 
-# Allow frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -68,12 +60,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load data once on startup
 load_data_once()
 
 @app.get("/")
-def root():
-    return {"message": "Car API is live"}
+def home():
+    return {"message": "API Running"}
 
 @app.get("/years")
 def get_years():
@@ -96,41 +87,7 @@ def get_models(year: int = Query(...), make: str = Query(...)):
     db.close()
     return [m[0] for m in models]
 
-@app.get("/car")
-def get_car(year: int, make: str, model: str):
-    db = SessionLocal()
-    car = db.query(Car).filter(Car.year == year, Car.make == make, Car.model == model).first()
-    db.close()
-    if car:
-        return {
-            "year": car.year,
-            "make": car.make,
-            "model": car.model,
-            "category": car.category
-        }
-    return {"error": "Car not found"}
-
-# Location schema for optional endpoints
-class Location(BaseModel):
-    formatted_address: str
-    city: str
-    state: str
-    zip: str
-    lat: float
-    lng: float
-
-@app.post("/pickup")
-def pickup_address(location: Location):
-    return {"message": "Pickup received", "location": location}
-
-@app.post("/dropoff")
-def dropoff_address(location: Location):
-    return {"message": "Dropoff received", "location": location}
-
-# Matching frontend quote format
 class QuoteSubmission(BaseModel):
-    email: str
-    phone: str
     pickup: str
     dropoff: str
     transport_type: str
@@ -138,14 +95,16 @@ class QuoteSubmission(BaseModel):
     make: str
     model: str
     operable: str
+    email: str
+    phone: str
     shipping_date: str
 
 @app.post("/submit-quote")
 def submit_quote(quote: QuoteSubmission):
     db = SessionLocal()
-    submission = Quote(**quote.dict())
-    db.add(submission)
+    new_quote = Quote(**quote.dict())
+    db.add(new_quote)
     db.commit()
-    db.refresh(submission)
     db.close()
-    return {"message": "Quote submitted", "id": submission.id}
+    return {"message": "Quote submitted", "status": "ok"}
+
