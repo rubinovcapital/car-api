@@ -32,7 +32,7 @@ class Quote(Base):
     operable = Column(String)
     email = Column(String)
     phone = Column(String)
-    shipping_date = Column(String)
+    date = Column(String)  # Changed from 'shipping_date' to 'date' to match plugin
 
 Base.metadata.create_all(bind=engine)
 
@@ -97,7 +97,7 @@ class QuoteSubmission(BaseModel):
     operable: str
     email: str
     phone: str
-    shipping_date: str
+    date: str  # Changed from 'shipping_date' to 'date'
 
 @app.post("/submit-quote")
 def submit_quote(quote: QuoteSubmission):
